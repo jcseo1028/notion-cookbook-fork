@@ -5,14 +5,22 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "ts-run": "tsx index.ts"
+    "ts-run": "tsx index.ts",
+    "auto": "tsx auto-daily-page.ts",
+    "auto:create": "tsx auto-daily-page.ts --create-only",
+    "auto:crawl": "tsx auto-daily-page.ts --crawl-only",
+    "auto:dry-run": "tsx auto-daily-page.ts --dry-run"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@notionhq/client": "^5.4.0",
+    "@types/cheerio": "^0.22.35",
     "@types/node": "^20.11.0",
+    "cheerio": "^1.2.0",
     "dotenv": "^16.3.1",
+    "puppeteer": "^24.40.0",
+    "sharp": "^0.34.5",
     "ts-node": "^10.8.2",
     "tsx": "^4.21.0",
     "typescript": "^5.3.3"

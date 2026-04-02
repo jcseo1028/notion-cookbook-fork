@@ -7,8 +7,17 @@
  * Notion SDK v5 — dataSources API를 사용합니다.
  */
 
-import { Client, isFullPage, isFullDatabase } from "@notionhq/client"
-import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
+import {
+  Client,
+  isFullPage,
+  isFullDatabase,
+  isFullBlock,
+  iteratePaginatedAPI,
+} from "@notionhq/client"
+import type {
+  PageObjectResponse,
+  BlockObjectResponse,
+} from "@notionhq/client/build/src/api-endpoints"
 
 import { config } from "dotenv"
 config()
@@ -128,7 +137,128 @@ function printPages(pages: PageObjectResponse[]) {
   })
 }
 
-// ─── 3) (TODO) 특정 페이지 자동 수정 ───────────────────────────
+// ─── 3) 페이지 콘텐츠(블록) 조회 ───────────────────────────────
+function getTextFromBlock(block: BlockObjectResponse): string {
+  const type = block.type
+  const value = block[type]
+
+  // rich_text를 지원하는 블록 (paragraph, heading, list 등)
+  if (value && "rich_text" in value && Array.isArray(value.rich_text)) {
+    const parts = value.rich_text.map((t: any) => {
+      // page mention이 "Untitled"인 경우 — 연동되지 않은 다른 DB의 페이지
+      if (
+        t.type === "mention" &&
+        t.mention?.type === "page" &&
+        t.plain_text === "Untitled"
+      ) {
+        return `[🔗 연동 안 된 페이지](${t.href})`
+      }
+      return t.plain_text
+    })
+    const text = parts.join("")
+    return text || ""
+  }
+
+  // 특수 블록 타입
+  switch (type) {
+    case "image":
+      return "[이미지]"
+    case "video":
+      return "[비디오]"
+    case "file":
+      return "[파일]"
+    case "bookmark":
+      return `[북마크] ${(value as any)?.url || ""}`
+    case "divider":
+      return "───────────────────"
+    case "table":
+      return "[표]"
+    case "child_database":
+      return `[하위 DB] ${(value as any)?.title || ""}`
+    case "child_page":
+      return `[하위 페이지] ${(value as any)?.title || ""}`
+    case "equation":
+      return `[수식] ${(value as any)?.expression || ""}`
+    default:
+      return ""
+  }
+}
+
+function blockTypePrefix(type: string): string {
+  const prefixMap: Record<string, string> = {
+    heading_1: "# ",
+    heading_2: "## ",
+    heading_3: "### ",
+    bulleted_list_item: "  • ",
+    numbered_list_item: "  1. ",
+    to_do: "  ☐ ",
+    toggle: "  ▸ ",
+    quote: "  > ",
+    callout: "  💡 ",
+    code: "  ```\n  ",
+  }
+  return prefixMap[type] || "  "
+}
+
+/** 블록 + 깊이 정보를 함께 저장하는 타입 */
+interface BlockWithDepth {
+  block: BlockObjectResponse
+  depth: number
+}
+
+/**
+ * 페이지의 모든 블록을 재귀적으로 가져옵니다.
+ * has_children === true 인 블록은 자식 블록도 조회합니다.
+ * @param blockId  페이지 ID 또는 부모 블록 ID
+ * @param depth    현재 깊이 (0 = 최상위)
+ * @param maxDepth 최대 재귀 깊이 (기본 3)
+ */
+async function fetchPageContent(
+  blockId: string,
+  depth: number = 0,
+  maxDepth: number = 3
+): Promise<BlockWithDepth[]> {
+  const result: BlockWithDepth[] = []
+
+  for await (const block of iteratePaginatedAPI(notion.blocks.children.list, {
+    block_id: blockId,
+  })) {
+    if (!isFullBlock(block)) continue
+
+    result.push({ block, depth })
+
+    // 자식 블록이 있고, 최대 깊이 미만이면 재귀 조회
+    if (block.has_children && depth < maxDepth) {
+      const children = await fetchPageContent(block.id, depth + 1, maxDepth)
+      result.push(...children)
+    }
+  }
+
+  return result
+}
+
+function printPageContent(title: string, items: BlockWithDepth[]) {
+  console.log(`\n📄 페이지 내용: ${title}`)
+  console.log("  ═════════════════════════════════════════════════")
+
+  if (items.length === 0) {
+    console.log("  (내용 없음)")
+    return
+  }
+
+  for (const { block, depth } of items) {
+    const text = getTextFromBlock(block)
+    if (text) {
+      const indent = "  ".repeat(depth) // 깊이에 따라 들여쓰기
+      const prefix = blockTypePrefix(block.type)
+      console.log(`${indent}${prefix}${text}`)
+    }
+  }
+
+  console.log("  ═════════════════════════════════════════════════")
+}
+
+// ─── 4) (TODO) 특정 페이지 자동 수정 ───────────────────────────
 // async function updatePage(pageId: string, properties: Record<string, unknown>) {
 //   // 추후 구현 예정
 //   // const response = await notion.pages.update({
@@ -150,6 +280,14 @@ async function main() {
     // 1. 페이지 목록 조회 및 출력
     const pages = await listPagesInDatabase(dataSourceId)
     printPages(pages)
+
+    // 2. 최신 페이지 내용 보기 (재귀적으로 모든 하위 블록 포함)
+    if (pages.length > 0) {
+      const latestPage = pages[0]
+      const title = getPageTitle(latestPage)
+      const blocks = await fetchPageContent(latestPage.id)
+      printPageContent(title, blocks)
+    }
 
     // 2. (추후) 페이지 자동 수정
     // 예: 특정 조건의 페이지를 찾아서 프로퍼티를 업데이트
