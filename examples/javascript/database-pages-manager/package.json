@@ -1,0 +1,20 @@
+{
+  "name": "database-pages-manager",
+  "version": "1.0.0",
+  "description": "List pages in a Notion database and manage page updates.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "ts-run": "tsx index.ts"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@notionhq/client": "^5.4.0",
+    "@types/node": "^20.11.0",
+    "dotenv": "^16.3.1",
+    "ts-node": "^10.8.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  }
+}
