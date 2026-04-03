@@ -36,7 +36,7 @@ export async function captureThemeTable(outputPath: string): Promise<string> {
 
   try {
     const page = await browser.newPage()
-    await page.setViewport({ width: 1400, height: 900 })
+    await page.setViewport({ width: 1400, height: 2000 })
 
     await page.goto("https://finance.finup.co.kr/Lab/ThemeLog", {
       waitUntil: "networkidle2",
@@ -49,11 +49,33 @@ export async function captureThemeTable(outputPath: string): Promise<string> {
     })
     await new Promise((r) => setTimeout(r, 3000))
 
-    // .contents01: 탭 헤더(날짜/시간) + 트리맵 차트 + 테마 테이블 전체
-    const chartEl = await page.$(".contents01")
+    // 고정 헤더(네비게이션 바)가 캡처 영역을 가릴 수 있으므로 숨김 처리
+    await page.evaluate(() => {
+      const fixedEls = document.querySelectorAll(
+        "header, nav, .header, .gnb, .top_area, [style*='position: fixed'], [style*='position:fixed']"
+      )
+      fixedEls.forEach((el) => ((el as HTMLElement).style.display = "none"))
+      // CSS position:fixed 요소도 숨김
+      const allEls = document.querySelectorAll("*")
+      allEls.forEach((el) => {
+        const style = window.getComputedStyle(el)
+        if (style.position === "fixed" || style.position === "sticky") {
+          ;(el as HTMLElement).style.display = "none"
+        }
+      })
+    })
+
+    // .chart: 트리맵 차트 영역만 (855x410)
+    // fallback 순서: .chart → #treemap → .contents01 → 전체 페이지
+    const chartEl =
+      (await page.$(".chart")) ||
+      (await page.$("#treemap")) ||
+      (await page.$(".contents01"))
     if (chartEl) {
+      await chartEl.scrollIntoView()
+      await new Promise((r) => setTimeout(r, 500))
       await chartEl.screenshot({ path: rawPath })
-      console.log("    ✅ 테마록 콘텐츠 영역 캡처 완료")
+      console.log("    ✅ 트리맵 차트 영역 캡처 완료")
     } else {
       // fallback: 전체 페이지
       await page.screenshot({ path: rawPath, fullPage: true })
