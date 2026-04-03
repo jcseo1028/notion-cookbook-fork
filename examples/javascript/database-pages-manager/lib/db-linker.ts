@@ -44,7 +44,7 @@ function stripParens(s: string): string {
 async function buildPageMap(
   databaseId: string,
   maxPages: number = 1000
-): Promise<PageMap> {
+): Promise<{ map: PageMap; pageCount: number }> {
   const dataSourceId = await getDataSourceId(databaseId)
   const map: PageMap = new Map()
   let cursor: string | undefined = undefined
@@ -59,6 +59,8 @@ async function buildPageMap(
 
     for (const page of response.results) {
       if (!isFullPage(page)) continue
+      // 휴지통이나 아카이브된 페이지는 건너뜀
+      if ((page as any).in_trash || page.archived) continue
       const title = getPageTitle(page).trim()
       if (title) {
         // 전체 제목으로 저장
@@ -97,7 +99,7 @@ async function buildPageMap(
     cursor = response.next_cursor
   }
 
-  return map
+  return { map, pageCount: total }
 }
 
 // ─── fuzzy 매칭 ─────────────────────────────────────────────────
@@ -161,8 +163,11 @@ export async function getThemeMap(): Promise<PageMap> {
   if (!env.THEME_DB_ID) return new Map()
 
   console.log("  📋 테마 DB 페이지 맵 로드 중...")
-  _themeMap = await buildPageMap(env.THEME_DB_ID)
-  console.log(`    → ${_themeMap.size}개 테마 로드됨`)
+  const { map, pageCount } = await buildPageMap(env.THEME_DB_ID)
+  _themeMap = map
+  console.log(
+    `    → ${pageCount}개 페이지 로드됨 (매칭 키 ${_themeMap.size}개)`
+  )
   return _themeMap
 }
 
@@ -176,8 +181,11 @@ export async function getStockMap(): Promise<PageMap> {
   if (!env.STOCK_DB_ID) return new Map()
 
   console.log("  📋 종목 DB 페이지 맵 로드 중...")
-  _stockMap = await buildPageMap(env.STOCK_DB_ID)
-  console.log(`    → ${_stockMap.size}개 종목 로드됨`)
+  const { map, pageCount } = await buildPageMap(env.STOCK_DB_ID)
+  _stockMap = map
+  console.log(
+    `    → ${pageCount}개 페이지 로드됨 (매칭 키 ${_stockMap.size}개)`
+  )
   return _stockMap
 }
 
